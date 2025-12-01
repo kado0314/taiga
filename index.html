@@ -6,13 +6,11 @@
     <title>音声ファイル文字起こしアプリ</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     
     <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -20,9 +18,7 @@
         #transcript { min-height: 400px; }
         .lucide { width: 20px; height: 20px; stroke-width: 2; }
         input[type="file"] { display: none; }
-        #uploadLabel:disabled, #uploadLabel[disabled] {
-            opacity: 0.5; cursor: not-allowed; background-color: #9ca3af;
-        }
+        #uploadLabel:disabled, #uploadLabel[disabled] { opacity: 0.5; cursor: not-allowed; background-color: #9ca3af; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-900 antialiased">
@@ -30,21 +26,17 @@
     <div class="container mx-auto max-w-4xl p-4 sm:p-8">
         <header class="mb-8 text-center">
             <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">音声ファイル文字起こしアプリ</h1>
-            <p class="text-lg text-gray-600 mt-2">ブラウザだけで動作します。データは外部に送信されません。</p>
+            <p class="text-lg text-gray-600 mt-2">PDF日本語対応版</p>
         </header>
 
         <main class="bg-white p-6 sm:p-8 rounded-2xl shadow-lg">
-
             <div class="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
                 <input type="file" id="audioUpload" accept="audio/*">
-                <label for="audioUpload" id="uploadLabel" class="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-blue-700 transition-all duration-300 cursor-pointer">
+                <label for="audioUpload" id="uploadLabel" class="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-blue-700 transition-all cursor-pointer">
                     <i data-lucide="upload" class="lucide"></i>
                     <span>音声ファイルを選択</span>
                 </label>
-                
-                <div id="status" class="text-gray-600 font-medium bg-gray-100 px-4 py-2 rounded-lg text-sm sm:text-base">
-                    準備中...
-                </div>
+                <div id="status" class="text-gray-600 font-medium bg-gray-100 px-4 py-2 rounded-lg text-sm sm:text-base">準備中...</div>
             </div>
 
             <div class="mb-6">
@@ -55,23 +47,23 @@
             <div class="flex flex-col sm:flex-row gap-4">
                 <button id="exportWord" class="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-green-700 transition-all">
                     <i data-lucide="file-text" class="lucide"></i>
-                    Word (.docx) で保存
+                    Word で保存
                 </button>
-                <button id="exportPdf" class="flex-1 flex items-center justify-center gap-2 bg-red-600 text-white px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-red-700 transition-all opacity-80">
+                <button id="exportPdf" class="flex-1 flex items-center justify-center gap-2 bg-red-600 text-white px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-red-700 transition-all">
                     <i data-lucide="file-type-2" class="lucide"></i>
-                    PDF (日本語不可)
+                    PDF で保存 (日本語OK)
                 </button>
             </div>
-
         </main>
-
         <div id="messageBox" class="fixed bottom-4 right-4 p-4 rounded-lg shadow-xl text-white transition-opacity duration-500 opacity-0 max-w-sm hidden"></div>
     </div>
 
     <script type="module">
-        // ---------------------------------------------------------
-        // 1. 初期化とライブラリ読み込み
-        // ---------------------------------------------------------
+        // ▼▼▼ 設定エリア ▼▼▼
+        // アップロードしたファイル名と完全に一致させてください
+        const FONT_FILENAME = 'Mplus1p-Medium.ttf'; 
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
         let pipeline;
         const statusEl = document.getElementById('status');
         const transcriptEl = document.getElementById('transcript');
@@ -82,47 +74,32 @@
         const uploadLabel = document.getElementById('uploadLabel');
         let recognizer;
 
-        // Transformers.js (v2.17.1) の読み込み
         try {
             const transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1');
             pipeline = transformers.pipeline;
-        } catch (err) {
-            console.error('Transformers load failed:', err);
-            statusEl.textContent = 'ライブラリ読込エラー';
-            alert('AIライブラリの読み込みに失敗しました。ページを更新してください。');
-        }
-
-        // アイコン表示
+        } catch (err) { alert('AIライブラリ読込失敗'); }
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
-        // ---------------------------------------------------------
-        // 2. 音声認識ロジック
-        // ---------------------------------------------------------
+        // 初期化
         async function initializeRecognizer() {
             if (!pipeline) return;
             try {
-                statusEl.textContent = 'モデルDL中... (初回のみ時間がかかります)';
+                statusEl.textContent = 'モデルDL中...';
                 uploadLabel.disabled = true;
-
-                // Whisperモデルのロード
                 recognizer = await pipeline('automatic-speech-recognition', 'Xenova/whisper-small', {
-                    progress_callback: (progress) => {
-                        if (progress.status === 'progress') {
-                            const p = progress.progress ? (progress.progress * 100).toFixed(0) : 0;
-                            statusEl.textContent = `モデル準備中... ${p}%`;
+                    progress_callback: (p) => {
+                        if (p.status === 'progress') {
+                            const percent = p.progress ? (p.progress * 100).toFixed(0) : 0;
+                            statusEl.textContent = `モデル準備中... ${percent}%`;
                         }
                     }
                 });
-                
                 statusEl.textContent = '音声ファイルを選択してください';
                 uploadLabel.disabled = false;
-            } catch (err) {
-                console.error(err);
-                statusEl.textContent = '初期化エラー';
-                showMessage('モデルの読み込みに失敗しました。', 'error');
-            }
+            } catch (err) { statusEl.textContent = 'エラー'; }
         }
 
+        // 音声処理
         async function resampleAudio(audioBuffer, targetSampleRate = 16000) {
             const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * targetSampleRate, targetSampleRate);
             const source = offlineCtx.createBufferSource();
@@ -134,138 +111,109 @@
         }
 
         audioUpload.addEventListener('change', (event) => {
-            if (!recognizer) {
-                showMessage('AIの準備が完了していません。', 'warning');
-                return;
-            }
+            if (!recognizer) { showMessage('AI準備中です', 'warning'); return; }
             const file = event.target.files[0];
             if (!file) return;
-
-            statusEl.textContent = 'ファイルを解析中...';
+            statusEl.textContent = '解析中...';
             transcriptEl.value = '';
             uploadLabel.disabled = true;
-
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
-                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    const audioBuffer = await audioCtx.decodeAudioData(e.target.result);
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const audioBuffer = await ctx.decodeAudioData(e.target.result);
                     const audioData = await resampleAudio(audioBuffer);
-
-                    statusEl.textContent = '文字起こし中... (待機中)';
-                    
-                    const output = await recognizer(audioData, {
-                        language: 'ja',
-                        task: 'transcribe',
-                    });
-
+                    statusEl.textContent = '文字起こし中...';
+                    const output = await recognizer(audioData, { language: 'ja', task: 'transcribe' });
                     transcriptEl.value = output.text;
-                    statusEl.textContent = '完了しました';
-                    showMessage('文字起こし完了！', 'success');
-
-                } catch (err) {
-                    console.error(err);
-                    statusEl.textContent = 'エラー発生';
-                    showMessage('処理中にエラーが発生しました。', 'error');
-                } finally {
-                    uploadLabel.disabled = false;
-                    audioUpload.value = null;
-                }
+                    statusEl.textContent = '完了';
+                    showMessage('完了しました', 'success');
+                } catch (err) { statusEl.textContent = 'エラー'; showMessage('エラーが発生しました', 'error'); } 
+                finally { uploadLabel.disabled = false; audioUpload.value = null; }
             };
             reader.readAsArrayBuffer(file);
         });
 
-        // ---------------------------------------------------------
-        // 3. Wordエクスポート機能 (修正版)
-        // ---------------------------------------------------------
+        // Word保存
         exportWordButton.addEventListener('click', () => {
             const text = transcriptEl.value;
-            if (!text.trim()) {
-                showMessage('テキストが空です。', 'warning');
-                return;
-            }
-
-            // docxライブラリの取得
+            if (!text.trim()) return showMessage('テキストがありません', 'warning');
             const docx = window.docx;
-            if (!docx) {
-                showMessage('Word機能の読み込みに失敗しました。', 'error');
-                return;
-            }
-
+            if (!docx) return showMessage('Wordライブラリ読込失敗', 'error');
             const { Document, Packer, Paragraph, TextRun } = docx;
-
-            // テキストを段落に分割
-            const paragraphs = text.split('\n').map(line => {
-                return new Paragraph({
-                    children: [new TextRun(line)],
-                    spacing: { after: 200 }
-                });
-            });
-
-            const doc = new Document({
-                sections: [{ properties: {}, children: paragraphs }]
-            });
-
-            Packer.toBlob(doc).then(blob => {
-                saveAs(blob, "文字起こし結果.docx");
-                showMessage('Wordファイルを保存しました。', 'success');
-            }).catch(err => {
-                console.error(err);
-                showMessage('保存に失敗しました。', 'error');
-            });
+            const paragraphs = text.split('\n').map(line => new Paragraph({ children: [new TextRun(line)], spacing: { after: 200 } }));
+            const doc = new Document({ sections: [{ children: paragraphs }] });
+            Packer.toBlob(doc).then(blob => { saveAs(blob, "文字起こし.docx"); showMessage('保存しました', 'success'); });
         });
 
-        // ---------------------------------------------------------
-        // 4. PDFエクスポート機能 (制限版)
-        // ---------------------------------------------------------
-        exportPdfButton.addEventListener('click', () => {
+        // PDF保存 (フォント読込機能付き)
+        exportPdfButton.addEventListener('click', async () => {
             const text = transcriptEl.value;
-            if (!text.trim()) {
-                showMessage('テキストが空です。', 'warning');
-                return;
-            }
+            if (!text.trim()) return showMessage('テキストがありません', 'warning');
+            if (typeof pdfMake === 'undefined') return showMessage('PDFライブラリ読込失敗', 'error');
 
-            // 警告を表示
-            alert('【注意】\n現在、PDF出力では日本語フォントが含まれていないため、日本語部分は空白になります。\n\n日本語の保存には隣の「Wordで保存」ボタンを使用してください。');
+            showMessage('PDF生成中...', 'info');
 
-            // それでもダウンロードする場合（英語用）
-            const docDefinition = {
-                content: [{ text: text, fontSize: 11, lineHeight: 1.4 }]
-            };
-            
             try {
-                pdfMake.createPdf(docDefinition).download('transcription_log.pdf');
+                // GitHub上のフォントファイルをfetchで取得
+                const fontResponse = await fetch(FONT_FILENAME);
+                if (!fontResponse.ok) throw new Error('Font file not found');
+                const fontBuffer = await fontResponse.arrayBuffer();
+                const base64Font = arrayBufferToBase64(fontBuffer);
+
+                // 仮想ファイルシステムに登録
+                pdfMake.vfs = { [FONT_FILENAME]: base64Font };
+                
+                // フォント定義
+                pdfMake.fonts = {
+                    JapaneseFont: {
+                        normal: FONT_FILENAME,
+                        bold: FONT_FILENAME,
+                        italics: FONT_FILENAME,
+                        bolditalics: FONT_FILENAME
+                    }
+                };
+
+                const docDefinition = {
+                    content: [{ text: text, fontSize: 11, lineHeight: 1.4 }],
+                    defaultStyle: { font: 'JapaneseFont' }
+                };
+
+                pdfMake.createPdf(docDefinition).download('文字起こし.pdf');
+                showMessage('PDFを保存しました', 'success');
+
             } catch (err) {
                 console.error(err);
+                if (err.message === 'Font file not found') {
+                    alert(`エラー：フォントファイル(${FONT_FILENAME})が見つかりません。\nGitHubにアップロードされているか、ファイル名が正しいか確認してください。`);
+                } else {
+                    showMessage('PDF作成に失敗しました', 'error');
+                }
             }
         });
 
-        // ---------------------------------------------------------
-        // ユーティリティ
-        // ---------------------------------------------------------
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+            return window.btoa(binary);
+        }
+
         let messageTimer;
         function showMessage(msg, type = 'info') {
             if (messageTimer) clearTimeout(messageTimer);
             messageBox.textContent = msg;
-            messageBox.className = 'fixed bottom-4 right-4 p-4 rounded-lg shadow-xl text-white transition-opacity duration-500 max-w-sm';
-            
+            messageBox.className = 'fixed bottom-4 right-4 p-4 rounded-lg shadow-xl text-white transition-opacity duration-500 max-w-sm opacity-100';
             if (type === 'success') messageBox.classList.add('bg-green-600');
             else if (type === 'error') messageBox.classList.add('bg-red-600');
             else if (type === 'warning') messageBox.classList.add('bg-yellow-600');
             else messageBox.classList.add('bg-blue-600');
-
-            messageBox.classList.remove('hidden', 'opacity-0');
-            messageBox.classList.add('opacity-100');
-
-            messageTimer = setTimeout(() => {
-                messageBox.classList.remove('opacity-100');
-                setTimeout(() => messageBox.classList.add('hidden'), 500);
-            }, 3000);
+            messageBox.classList.remove('hidden');
+            messageTimer = setTimeout(() => { messageBox.classList.remove('opacity-100'); setTimeout(()=>messageBox.classList.add('hidden'),500); }, 3000);
         }
 
-        // アプリ起動
         initializeRecognizer();
-
     </script>
 </body>
 </html>
