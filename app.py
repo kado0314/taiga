@@ -1,14 +1,13 @@
 import os
 import gc
+import time
 from flask import Flask, render_template, request, jsonify
 import google.generativeai as genai
 
 app = Flask(__name__)
 
-# Renderの環境変数からAPIキーを取得
+# 1. Renderの環境変数からAPIキーを取得して設定
 API_KEY = os.environ.get("GEMINI_API_KEY")
-
-# APIキー設定
 if API_KEY:
     genai.configure(api_key=API_KEY)
 
@@ -19,23 +18,33 @@ def index():
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
     if not API_KEY:
-        return jsonify({"error": "サーバー側でAPIキーが設定されていません"}), 500
+        return jsonify({"error": "APIキーが設定されていません"}), 500
 
     if 'audio' not in request.files:
-        return jsonify({"error": "音声ファイルが見つかりません"}), 400
+        return jsonify({"error": "ファイルがありません"}), 400
 
     file = request.files['audio']
     if file.filename == '':
         return jsonify({"error": "ファイルが選択されていません"}), 400
 
+    # 一時ファイルの保存パス
+    temp_path = "temp_audio.mp3"
+
     try:
-        # ファイルデータを読み込む
-        file_data = file.read()
+        # 【メモリ対策1】メモリに展開せず、一旦ディスクに保存
+        file.save(temp_path)
         
-        # モデル設定 (Gemini 2.0 Flash Lite)
+        # 【モデル指定】ここで明確に gemini-2.0-flash-lite を指定しています
         model = genai.GenerativeModel("gemini-2.0-flash-lite")
         
-        # プロンプト (ご希望の内容に更新)
+        # 【メモリ対策2】GeminiのFile APIを使用してアップロード
+        # (大きなファイルもサーバーのメモリを使わずに処理できます)
+        uploaded_file = genai.upload_file(temp_path, mime_type="audio/mp3")
+
+        # 念のためアップロード完了を少し待機（即時処理でエラーになるのを防ぐ）
+        time.sleep(1)
+
+        # プロンプト (ご指定の内容に変更)
         prompt = """
         あなたはプロの書記官です。添付された音声ファイルを聞き、以下の形式で詳細な議事録を作成してください。
 
@@ -57,27 +66,26 @@ def transcribe():
         ## 4. 詳細な議論内容 (会話形式)
         """
 
-        # Geminiへ送信
-        response = model.generate_content([
-            prompt,
-            {
-                "mime_type": file.content_type,
-                "data": file_data
-            }
-        ])
+        # 解析実行
+        response = model.generate_content([prompt, uploaded_file])
 
-        # メモリ解放のおまじない
-        del file_data
-        gc.collect()
+        # 【メモリ対策3】Google側のファイルを削除（ゴミを残さない）
+        try:
+            uploaded_file.delete()
+        except:
+            pass
 
         return jsonify({"text": response.text})
 
     except Exception as e:
         print(f"Error: {e}")
-        # メモリ不足のエラーが見えた場合、クライアントに伝える
-        if "ResourceExhausted" in str(e) or "429" in str(e):
-             return jsonify({"error": "AIの処理制限、またはメモリ不足が発生しました。ファイルを小さくして試してください。"}), 500
-        return jsonify({"error": f"処理中にエラーが発生しました: {str(e)}"}), 500
+        return jsonify({"error": f"エラーが発生しました: {str(e)}"}), 500
+        
+    finally:
+        # 【メモリ対策4】Render側の一次ファイルを削除
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        gc.collect()
 
 if __name__ == '__main__':
     app.run(debug=True)
