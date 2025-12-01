@@ -1,6 +1,6 @@
 import os
 from flask import Flask, render_template, request, jsonify
-import google.generative_ai as genai
+import google.generativeai as genai
 
 app = Flask(__name__)
 
