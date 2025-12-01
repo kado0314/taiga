@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI議事録作成 (Render版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <div class="container mx-auto max-w-4xl p-8">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-gray-800">AI 議事録自動作成</h1>
+            <p class="text-gray-600 mt-2">サーバー側で安全に処理を実行します</p>
+        </header>
+
+        <main class="bg-white p-6 rounded-2xl shadow-lg space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="relative">
+                    <input type="file" id="audioUpload" accept="audio/*" class="hidden">
+                    <label for="audioUpload" id="uploadLabel" class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                        <i data-lucide="upload-cloud" class="w-8 h-8 text-gray-400 mb-2"></i>
+                        <span class="text-sm text-gray-500">音声ファイルを選択</span>
+                        <span id="fileName" class="text-xs text-gray-400 mt-1">MP3推奨 (20MB以下)</span>
+                    </label>
+                </div>
+                <button id="generateBtn" disabled class="flex flex-col items-center justify-center w-full h-32 bg-gray-100 text-gray-400 rounded-lg font-bold shadow-sm transition-all cursor-not-allowed">
+                    <i data-lucide="sparkles" class="w-8 h-8 mb-2"></i>
+                    <span>議事録を作成する</span>
+                </button>
+            </div>
+
+            <div id="statusArea" class="hidden p-4 rounded-lg bg-blue-50 text-blue-800 flex items-center gap-3">
+                <div class="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                <span id="statusText">サーバーへアップロード＆解析中...</span>
+            </div>
+
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="font-bold text-gray-700">生成結果</label>
+                    <button id="downloadWord" class="hidden text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 flex items-center gap-1">
+                        <i data-lucide="download" class="w-4 h-4"></i> Word保存
+                    </button>
+                </div>
+                <textarea id="resultText" class="w-full h-96 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="ここに結果が表示されます..."></textarea>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        const audioUpload = document.getElementById('audioUpload');
+        const generateBtn = document.getElementById('generateBtn');
+        const statusArea = document.getElementById('statusArea');
+        const statusText = document.getElementById('statusText');
+        const resultText = document.getElementById('resultText');
+        const fileNameDisplay = document.getElementById('fileName');
+        const uploadLabel = document.getElementById('uploadLabel');
+        const downloadWordBtn = document.getElementById('downloadWord');
+        let selectedFile = null;
+
+        audioUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            selectedFile = file;
+            fileNameDisplay.textContent = file.name;
+            uploadLabel.classList.add('bg-blue-50', 'border-blue-300');
+            generateBtn.disabled = false;
+            generateBtn.classList.remove('bg-gray-100', 'text-gray-400', 'cursor-not-allowed');
+            generateBtn.classList.add('bg-indigo-600', 'text-white', 'hover:bg-indigo-700', 'cursor-pointer');
+        });
+
+        generateBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            
+            // UI更新
+            generateBtn.disabled = true;
+            statusArea.classList.remove('hidden');
+            resultText.value = '';
+            downloadWordBtn.classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('audio', selectedFile);
+
+            try {
+                const response = await fetch('/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'サーバーエラー');
+                }
+
+                resultText.value = data.text;
+                downloadWordBtn.classList.remove('hidden');
+            } catch (error) {
+                alert('エラー: ' + error.message);
+                resultText.value = 'エラーが発生しました: ' + error.message;
+            } finally {
+                statusArea.classList.add('hidden');
+                generateBtn.disabled = false;
+            }
+        });
+
+        // Word保存機能
+        downloadWordBtn.addEventListener('click', () => {
+            const text = resultText.value;
+            if (!window.docx || !text) return;
+            const { Document, Packer, Paragraph, TextRun } = window.docx;
+            const paragraphs = text.split('\n').map(line => new Paragraph({
+                children: [new TextRun(line)], spacing: { after: 200 }
+            }));
+            const doc = new Document({ sections: [{ children: paragraphs }] });
+            Packer.toBlob(doc).then(blob => saveAs(blob, "議事録.docx"));
+        });
+    </script>
+</body>
+</html>
