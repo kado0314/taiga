@@ -6,8 +6,9 @@ import google.generativeai as genai
 
 app = Flask(__name__)
 
-# 1. Renderの環境変数からAPIキーを取得して設定
+# Renderの環境変数からAPIキーを取得
 API_KEY = os.environ.get("GEMINI_API_KEY")
+
 if API_KEY:
     genai.configure(api_key=API_KEY)
 
@@ -31,45 +32,51 @@ def transcribe():
     temp_path = "temp_audio.mp3"
 
     try:
-        # 【メモリ対策1】メモリに展開せず、一旦ディスクに保存
+        # メモリ対策: 一旦ディスクに保存
         file.save(temp_path)
         
-        # 【モデル指定】ここで明確に gemini-2.0-flash-lite を指定しています
+        # モデル指定 (Gemini 2.0 Flash Lite)
         model = genai.GenerativeModel("gemini-2.0-flash-lite")
         
-        # 【メモリ対策2】GeminiのFile APIを使用してアップロード
-        # (大きなファイルもサーバーのメモリを使わずに処理できます)
+        # File APIを使用してアップロード
         uploaded_file = genai.upload_file(temp_path, mime_type="audio/mp3")
+        time.sleep(1) # 処理待ち
 
-        # 念のためアップロード完了を少し待機（即時処理でエラーになるのを防ぐ）
-        time.sleep(1)
-
-        # プロンプト (ご指定の内容に変更)
+        # ▼▼▼▼▼ プロンプト修正部分 ▼▼▼▼▼
         prompt = """
         あなたはプロの書記官です。添付された音声ファイルを聞き、以下の形式で詳細な議事録を作成してください。
 
-        【要件】
-        1. **話者の識別**: 文脈から可能な限り「Aさん」「Bさん」のように書き分けてください。
-        2. **要約と詳細**: 議論の流れがわかるようにまとめてください。
-        3. **重要事項**: 決定事項やネクストアクションは明確に抜き出してください。
-        4. **重要**: 喋っていることには喋っている人の名前とカギカッコ [〇さん「」] を付けてください。
+        【重要要件】
+        1. **話者の特定（最優先）**: 
+           - 音声内の「呼びかけ」や「自己紹介」から、具体的な名前（例：かいち、きみのり）を特定してください。
+           - 名前が特定できた場合は、必ずその名前を使用してください。
+           - どうしても名前が不明な人物のみ「Aさん」「Bさん」とアルファベットで表記してください。
+        
+        2. **会話の記述形式**:
+           - 以下の形式で記述してください（カギカッコを使用）。
+             かいち「こんにちは」
+             きみのり「こんばんは」
+             Aさん「こんばんは」
+
+        3. **構成**:
+           - 概要の「参加者」欄には、特定できた名前をすべて列挙してください。
 
         【出力フォーマット】
         # 会議議事録
         ## 1. 概要
-        * 日時/参加者: (推定)
+        * 日時: (推定)
+        * 参加者: (特定できた名前、および不明な人数)
 
         ## 2. 決定事項
-
-        ## 3. ネクストアクション (ToDo)
-
-        ## 4. 詳細な議論内容 (会話形式)
+        * ## 3. ネクストアクション (ToDo)
+        * ## 4. 詳細な議論内容 (会話形式)
         """
+        # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
         # 解析実行
         response = model.generate_content([prompt, uploaded_file])
 
-        # 【メモリ対策3】Google側のファイルを削除（ゴミを残さない）
+        # Google側のファイルを削除
         try:
             uploaded_file.delete()
         except:
@@ -82,7 +89,7 @@ def transcribe():
         return jsonify({"error": f"エラーが発生しました: {str(e)}"}), 500
         
     finally:
-        # 【メモリ対策4】Render側の一次ファイルを削除
+        # Render側の一次ファイルを削除
         if os.path.exists(temp_path):
             os.remove(temp_path)
         gc.collect()
