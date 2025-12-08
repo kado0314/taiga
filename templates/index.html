@@ -4,51 +4,292 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI議事録作成 (Render版)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+        /* =========================================
+           ご提示いただいたCSS (ベーススタイル)
+           ========================================= */
+        :root {
+            --bg-dark: #0a0f24;
+            --bg-card: rgba(20, 30, 60, 0.9);
+            --accent: #00b4ff;
+            --accent-glow: 0 0 12px #00b4ff;
+            --text-main: #e6f0ff;
+            --text-sub: #a0b8ff;
+            --radius: 18px;
+            font-family: "Noto Sans JP", "Poppins", sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px 20px;
+            background: radial-gradient(circle at top, #0b1635 0%, #000814 100%);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0,180,255,0.3);
+            border-radius: var(--radius);
+            box-shadow: var(--accent-glow);
+            max-width: 800px; /* 横並びレイアウトのため少し広げました */
+            width: 100%;
+            padding: 30px 40px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5em;
+            background: linear-gradient(90deg, #00b4ff, #60a3ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            font-size: 1rem;
+            color: var(--text-sub);
+            line-height: 1.5;
+            margin-bottom: 2em;
+        }
+
+        /* ボタン共通スタイル */
+        button {
+            border: none;
+            border-radius: var(--radius);
+            padding: 14px 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.15s, box-shadow 0.3s, background 0.3s;
+            color: white;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        /* 波紋エフェクト */
+        button::before {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 300%;
+            height: 300%;
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            opacity: 0;
+            transition: transform 0.6s ease-out, opacity 0.6s ease-out;
+            z-index: 0;
+        }
+
+        button:hover::before {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 0.1;
+        }
+
+        /* =========================================
+           このアプリ専用の追加デザイン (テーマに合わせる)
+           ========================================= */
+
+        /* レイアウト用グリッド */
+        .control-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* アップロードエリアのデザイン */
+        .upload-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 140px;
+            border: 2px dashed rgba(0, 180, 255, 0.4);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(0, 0, 0, 0.2);
+            color: var(--text-sub);
+        }
+
+        .upload-label:hover {
+            border-color: var(--accent);
+            background: rgba(0, 180, 255, 0.05);
+            box-shadow: 0 0 15px rgba(0, 180, 255, 0.2);
+            color: var(--text-main);
+        }
+
+        .upload-label.file-selected {
+            border-style: solid;
+            background: rgba(0, 180, 255, 0.15);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* 生成ボタン (#playButtonのスタイルを適用) */
+        #generateBtn {
+            width: 100%;
+            height: 140px;
+            flex-direction: column;
+            font-weight: bold;
+            font-size: 1.1rem;
+            background: linear-gradient(90deg, #0078ff, #00c3ff);
+            box-shadow: 0 0 8px rgba(0,180,255,0.4);
+        }
+
+        #generateBtn:not(:disabled):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 18px rgba(0,180,255,0.8);
+            background: linear-gradient(90deg, #00c3ff, #0078ff);
+        }
+
+        #generateBtn:disabled {
+            background: #1a2236;
+            color: #4a5568;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* ステータスエリア */
+        #statusArea {
+            display: none; /* 初期非表示 */
+            background: rgba(0, 180, 255, 0.1);
+            border: 1px solid var(--accent);
+            padding: 15px;
+            border-radius: var(--radius);
+            color: var(--accent);
+            margin-bottom: 20px;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        #statusArea.flex {
+            display: flex; /* JSで表示切り替え時に使用 */
+        }
+
+        /* ローディングスピナー */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 180, 255, 0.3);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 結果表示エリア (.result-box風) */
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 0 5px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 400px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 180, 255, 0.3);
+            border-radius: var(--radius);
+            color: var(--text-main);
+            padding: 20px;
+            font-family: inherit;
+            font-size: 1rem;
+            resize: vertical;
+            outline: none;
+            box-sizing: border-box;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 10px rgba(0, 180, 255, 0.3);
+        }
+
+        /* ダウンロードボタン (#changeButton風) */
+        #downloadWord {
+            font-size: 0.9rem;
+            padding: 8px 16px;
+            background: linear-gradient(90deg, #006644, #004422);
+            box-shadow: 0 0 8px #006644;
+        }
+
+        #downloadWord:hover {
+            background: linear-gradient(90deg, #005533, #007744);
+            box-shadow: 0 0 16px #00aa55;
+        }
+        
+        .hidden { display: none !important; }
+
+        /* スマホ対応 */
+        @media (max-width: 768px){
+            .control-grid { grid-template-columns: 1fr; }
+            #generateBtn, .upload-label { height: 100px; }
+            .container { padding: 20px 15px; }
+        }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
-    <div class="container mx-auto max-w-4xl p-8">
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl font-bold text-gray-800">AI 議事録自動作成</h1>
-            <p class="text-gray-600 mt-2">サーバー側で安全に処理を実行します</p>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>AI 議事録自動作成</h1>
+            <p>サーバー側で安全に処理を実行します</p>
         </header>
 
-        <main class="bg-white p-6 rounded-2xl shadow-lg space-y-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <main>
+            <div class="control-grid">
                 <div class="relative">
-                    <input type="file" id="audioUpload" accept="audio/*" class="hidden">
-                    <label for="audioUpload" id="uploadLabel" class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                        <i data-lucide="upload-cloud" class="w-8 h-8 text-gray-400 mb-2"></i>
-                        <span class="text-sm text-gray-500">音声ファイルを選択</span>
-                        <span id="fileName" class="text-xs text-gray-400 mt-1">MP3推奨 (20MB以下)</span>
+                    <input type="file" id="audioUpload" accept="audio/*" class="hidden" style="display:none;">
+                    <label for="audioUpload" id="uploadLabel" class="upload-label">
+                        <i data-lucide="upload-cloud" style="width: 32px; height: 32px; margin-bottom: 8px;"></i>
+                        <span class="text-sm">音声ファイルを選択</span>
+                        <span id="fileName" style="font-size: 0.8rem; opacity: 0.7; margin-top: 5px;">MP3推奨 (20MB以下)</span>
                     </label>
                 </div>
-                <button id="generateBtn" disabled class="flex flex-col items-center justify-center w-full h-32 bg-gray-100 text-gray-400 rounded-lg font-bold shadow-sm transition-all cursor-not-allowed">
-                    <i data-lucide="sparkles" class="w-8 h-8 mb-2"></i>
+                
+                <button id="generateBtn" disabled>
+                    <i data-lucide="sparkles" style="width: 28px; height: 28px;"></i>
                     <span>議事録を作成する</span>
                 </button>
             </div>
 
-            <div id="statusArea" class="hidden p-4 rounded-lg bg-blue-50 text-blue-800 flex items-center gap-3">
-                <div class="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+            <div id="statusArea">
+                <div class="spinner"></div>
                 <span id="statusText">サーバーへアップロード＆解析中...</span>
             </div>
 
             <div>
-                <div class="flex justify-between items-center mb-2">
-                    <label class="font-bold text-gray-700">生成結果</label>
-                    <button id="downloadWord" class="hidden text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 flex items-center gap-1">
-                        <i data-lucide="download" class="w-4 h-4"></i> Word保存
+                <div class="result-header">
+                    <label style="font-weight: bold; color: var(--text-main);">生成結果</label>
+                    <button id="downloadWord" class="hidden">
+                        <i data-lucide="download" style="width: 16px; height: 16px;"></i> Word保存
                     </button>
                 </div>
-                <textarea id="resultText" class="w-full h-96 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="ここに結果が表示されます..."></textarea>
+                <textarea id="resultText" placeholder="ここに結果が表示されます..."></textarea>
             </div>
         </main>
     </div>
@@ -70,10 +311,12 @@
             if (!file) return;
             selectedFile = file;
             fileNameDisplay.textContent = file.name;
-            uploadLabel.classList.add('bg-blue-50', 'border-blue-300');
+            
+            // デザイン変更に合わせてクラス操作を変更
+            // Tailwindのクラスではなく、CSSで定義した .file-selected を付与
+            uploadLabel.classList.add('file-selected');
+            
             generateBtn.disabled = false;
-            generateBtn.classList.remove('bg-gray-100', 'text-gray-400', 'cursor-not-allowed');
-            generateBtn.classList.add('bg-indigo-600', 'text-white', 'hover:bg-indigo-700', 'cursor-pointer');
         });
 
         generateBtn.addEventListener('click', async () => {
@@ -82,6 +325,7 @@
             // UI更新
             generateBtn.disabled = true;
             statusArea.classList.remove('hidden');
+            statusArea.classList.add('flex'); // Flexboxを有効化
             resultText.value = '';
             downloadWordBtn.classList.add('hidden');
 
@@ -107,11 +351,12 @@
                 resultText.value = 'エラーが発生しました: ' + error.message;
             } finally {
                 statusArea.classList.add('hidden');
+                statusArea.classList.remove('flex');
                 generateBtn.disabled = false;
             }
         });
 
-        // Word保存機能
+        // Word保存機能 (変更なし)
         downloadWordBtn.addEventListener('click', () => {
             const text = resultText.value;
             if (!window.docx || !text) return;
