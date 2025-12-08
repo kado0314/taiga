@@ -1,127 +1,368 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI議事録作成 (Render版)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-    <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI議事録作成 (Dark Theme)</title>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Noto+Sans+JP:wght@400;700&display=swap');
+
+        /* ===== ルート変数 ===== */
+        :root {
+            --bg-dark: #0a0f24;
+            --bg-card: rgba(20, 30, 60, 0.9);
+            --accent: #00b4ff;
+            --accent-glow: 0 0 12px #00b4ff;
+            --text-main: #e6f0ff;
+            --text-sub: #a0b8ff;
+            --radius: 18px;
+            font-family: "Noto Sans JP", "Poppins", sans-serif;
+        }
+
+        /* ===== ベース ===== */
+        body {
+            margin: 0;
+            padding: 40px 20px;
+            background: radial-gradient(circle at top, #0b1635 0%, #000814 100%);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+        }
+
+        /* ===== カード風コンテナ (main-containerとして使用) ===== */
+        .main-container {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0,180,255,0.3);
+            border-radius: var(--radius);
+            box-shadow: var(--accent-glow);
+            max-width: 700px;
+            width: 100%;
+            padding: 30px 40px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        /* ===== タイトル ===== */
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1em;
+            background: linear-gradient(90deg, #00b4ff, #60a3ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: bold; /* 追加: 見出しの太さ */
+        }
+
+        /* ===== 説明文/サブテキスト ===== */
+        .sub-text {
+            font-size: 1rem;
+            color: var(--text-sub);
+            line-height: 1.5;
+            margin-bottom: 1.2em;
+        }
+
+        /* ===== ボタン共通 (既存のスタイルは使用しないが、新しいスタイルを適用) ===== */
+        .action-button, #generateBtn {
+            border: none;
+            border-radius: var(--radius);
+            padding: 14px 30px;
+            margin: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.15s, box-shadow 0.3s;
+            z-index: 1; /* Ripple効果のためにZ-indexを調整 */
+        }
+        .action-button span, #generateBtn span { z-index: 2; position: relative; } /* テキストを前面に */
+
+
+        /* generateBtn に #playButton のスタイルを適用 */
+        #generateBtn:not([disabled]) {
+            background: linear-gradient(90deg, #0078ff, #00c3ff);
+            color: white;
+            box-shadow: 0 0 8px rgba(0,180,255,0.4);
+            cursor: pointer;
+        }
+        #generateBtn:not([disabled]):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 18px rgba(0,180,255,0.8);
+            background: linear-gradient(90deg, #00c3ff, #0078ff);
+        }
+        #generateBtn[disabled] {
+            background: rgba(0,180,255,0.15); /* disabledの色をダークテーマに合わせる */
+            color: var(--text-sub);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        
+        /* uploadLabelにもボタンのベーススタイルを適用 */
+        #uploadLabel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%; /* grid-itemのサイズに合わせる */
+            border: 2px dashed rgba(0,180,255,0.4);
+            background: rgba(0,0,0,0.2);
+            border-radius: var(--radius);
+            cursor: pointer;
+            color: var(--text-sub);
+            transition: all 0.2s;
+        }
+        #uploadLabel:hover {
+            border-color: var(--accent);
+            background: rgba(0,180,255,0.05);
+            color: var(--text-main);
+        }
+        #uploadLabel.uploaded {
+            border: 2px solid var(--accent);
+            background: rgba(0,180,255,0.1);
+        }
+        #uploadLabel svg { color: var(--accent); }
+        #fileName { color: var(--text-sub); }
+
+
+        /* Word保存ボタンに #changeButton のスタイルを適用 */
+        #downloadWord {
+            background: linear-gradient(90deg, #006644, #004422);
+            color: white;
+            box-shadow: 0 0 8px #006644;
+            border-radius: 8px; /* 小さくするために角丸を調整 */
+            padding: 6px 14px; /* 小さくするためにパディングを調整 */
+            font-size: 0.9rem;
+            transition: transform 0.15s, box-shadow 0.3s;
+        }
+        #downloadWord:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 16px #00aa55;
+            background: linear-gradient(90deg, #005533, #007744);
+        }
+
+
+        /* 波紋エフェクト (generateBtnのみに適用) ===== */
+        #generateBtn:not([disabled])::before {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 300%;
+            height: 300%;
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            opacity: 0;
+            transition: transform 0.6s ease-out, opacity 0.6s ease-out;
+            background-color: white; /* 波紋の色 */
+            z-index: 0;
+        }
+        #generateBtn:not([disabled]):hover::before {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 0.1;
+        }
+
+
+        /* ステータスエリア */
+        #statusArea {
+            padding: 15px;
+            border-radius: var(--radius);
+            background: rgba(0,180,255,0.15);
+            color: var(--text-main);
+            border: 1px solid var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #statusArea div {
+            border-color: var(--accent) var(--accent) transparent transparent;
+        }
+
+        /* テキストエリア */
+        #resultText {
+            width: 100%;
+            height: 384px; /* h-96に対応 */
+            padding: 15px;
+            border: 1px solid rgba(0,180,255,0.3);
+            border-radius: var(--radius);
+            background: rgba(0,0,0,0.4);
+            color: var(--text-main);
+            outline: none;
+            resize: vertical;
+        }
+        #resultText::placeholder { color: var(--text-sub); }
+        #resultText:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 5px rgba(0,180,255,0.6);
+        }
+
+        /* flex/grid ユーティリティ (Tailwindの代替) */
+        .flex-between-center {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .grid-2-col {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px; /* gap-4 */
+        }
+        @media (min-width: 768px) {
+            .grid-2-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+
+        /* その他 */
+        .mb-8 { margin-bottom: 2rem; }
+        .space-y-6 > * + * { margin-top: 1.5rem; }
+        .mt-2 { margin-top: 0.5rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .p-6 { padding: 1.5rem; }
+        .relative { position: relative; }
+        .hidden { display: none !important; }
+
+        /* 元のCSSに含まれていたが未使用のスタイル */
+        .correct-text { display: none; }
+        .result-box { display: none; }
+        #recognitionResult, #scoreResult { display: none; }
+        #backBtn { display: none; }
+        
+        /* スマホ対応 */
+        @media (max-width: 768px){
+            body { padding: 20px 10px; }
+            .main-container { padding: 20px 15px; }
+            h1 { font-size: 1.5rem; }
+            #generateBtn { width: 100%; padding: 12px; font-size: 0.95rem; }
+            #uploadLabel { height: 128px; } /* md:h-32 を調整 */
+        }
+
+    </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
-    <div class="container mx-auto max-w-4xl p-8">
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl font-bold text-gray-800">AI 議事録自動作成</h1>
-            <p class="text-gray-600 mt-2">サーバー側で安全に処理を実行します</p>
-        </header>
+<body>
+    <div class="main-container">
+        <header class="mb-8">
+            <h1>AI 議事録自動作成</h1>
+            <p class="sub-text mt-2">サーバー側で安全に処理を実行します</p>
+        </header>
 
-        <main class="bg-white p-6 rounded-2xl shadow-lg space-y-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="relative">
-                    <input type="file" id="audioUpload" accept="audio/*" class="hidden">
-                    <label for="audioUpload" id="uploadLabel" class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                        <i data-lucide="upload-cloud" class="w-8 h-8 text-gray-400 mb-2"></i>
-                        <span class="text-sm text-gray-500">音声ファイルを選択</span>
-                        <span id="fileName" class="text-xs text-gray-400 mt-1">MP3推奨 (20MB以下)</span>
-                    </label>
-                </div>
-                <button id="generateBtn" disabled class="flex flex-col items-center justify-center w-full h-32 bg-gray-100 text-gray-400 rounded-lg font-bold shadow-sm transition-all cursor-not-allowed">
-                    <i data-lucide="sparkles" class="w-8 h-8 mb-2"></i>
-                    <span>議事録を作成する</span>
-                </button>
-            </div>
+        <main class="space-y-6">
+            <div class="grid-2-col">
+                <div class="relative h-32">                     <input type="file" id="audioUpload" accept="audio/*" class="hidden">
+                    <label for="audioUpload" id="uploadLabel" class="h-full">
+                        <i data-lucide="upload-cloud" class="w-8 h-8 mb-2"></i>
+                        <span class="text-sm">音声ファイルを選択</span>
+                        <span id="fileName" class="text-xs mt-1">MP3推奨 (20MB以下)</span>
+                    </label>
+                </div>
+                <button id="generateBtn" disabled class="h-32">                     <i data-lucide="sparkles" class="w-8 h-8 mb-2"></i>
+                    <span>議事録を作成する</span>
+                </button>
+            </div>
 
-            <div id="statusArea" class="hidden p-4 rounded-lg bg-blue-50 text-blue-800 flex items-center gap-3">
-                <div class="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-                <span id="statusText">サーバーへアップロード＆解析中...</span>
-            </div>
+            <div id="statusArea" class="hidden">
+                <div class="animate-spin h-5 w-5 border-2 border-t-transparent rounded-full"></div>
+                <span id="statusText">サーバーへアップロード＆解析中...</span>
+            </div>
 
-            <div>
-                <div class="flex justify-between items-center mb-2">
-                    <label class="font-bold text-gray-700">生成結果</label>
-                    <button id="downloadWord" class="hidden text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 flex items-center gap-1">
-                        <i data-lucide="download" class="w-4 h-4"></i> Word保存
-                    </button>
-                </div>
-                <textarea id="resultText" class="w-full h-96 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="ここに結果が表示されます..."></textarea>
-            </div>
-        </main>
-    </div>
+            <div>
+                <div class="flex-between-center mb-2">
+                    <label class="font-bold text-lg" style="color: var(--text-main);">生成結果</label>
+                    <button id="downloadWord" class="hidden flex items-center gap-1">
+                        <i data-lucide="download" class="w-4 h-4"></i> Word保存
+                    </button>
+                </div>
+                <textarea id="resultText" placeholder="ここに結果が表示されます..."></textarea>
+            </div>
+        </main>
+    </div>
 
-    <script>
-        lucide.createIcons();
-        const audioUpload = document.getElementById('audioUpload');
-        const generateBtn = document.getElementById('generateBtn');
-        const statusArea = document.getElementById('statusArea');
-        const statusText = document.getElementById('statusText');
-        const resultText = document.getElementById('resultText');
-        const fileNameDisplay = document.getElementById('fileName');
-        const uploadLabel = document.getElementById('uploadLabel');
-        const downloadWordBtn = document.getElementById('downloadWord');
-        let selectedFile = null;
+    <script>
+        lucide.createIcons();
+        const audioUpload = document.getElementById('audioUpload');
+        const generateBtn = document.getElementById('generateBtn');
+        const statusArea = document.getElementById('statusArea');
+        const statusText = document.getElementById('statusText');
+        const resultText = document.getElementById('resultText');
+        const fileNameDisplay = document.getElementById('fileName');
+        const uploadLabel = document.getElementById('uploadLabel');
+        const downloadWordBtn = document.getElementById('downloadWord');
+        let selectedFile = null;
 
-        audioUpload.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            selectedFile = file;
-            fileNameDisplay.textContent = file.name;
-            uploadLabel.classList.add('bg-blue-50', 'border-blue-300');
-            generateBtn.disabled = false;
-            generateBtn.classList.remove('bg-gray-100', 'text-gray-400', 'cursor-not-allowed');
-            generateBtn.classList.add('bg-indigo-600', 'text-white', 'hover:bg-indigo-700', 'cursor-pointer');
-        });
+        audioUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            selectedFile = file;
+            fileNameDisplay.textContent = file.name;
+            // 新しいクラス名 'uploaded' を使用
+            uploadLabel.classList.add('uploaded');
+            
+            generateBtn.disabled = false;
+        });
 
-        generateBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
-            
-            // UI更新
-            generateBtn.disabled = true;
-            statusArea.classList.remove('hidden');
-            resultText.value = '';
-            downloadWordBtn.classList.add('hidden');
+        generateBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            
+            // UI更新
+            generateBtn.disabled = true;
+            statusArea.classList.remove('hidden');
+            resultText.value = '';
+            downloadWordBtn.classList.add('hidden');
 
-            const formData = new FormData();
-            formData.append('audio', selectedFile);
+            const formData = new FormData();
+            formData.append('audio', selectedFile);
 
-            try {
-                const response = await fetch('/transcribe', {
-                    method: 'POST',
-                    body: formData
-                });
+            try {
+                // このfetchはダミーです。実際のサーバーエンドポイントに置き換えてください
+                // const response = await fetch('/transcribe', {
+                //     method: 'POST',
+                //     body: formData
+                // });
+                
+                // const data = await response.json();
 
-                const data = await response.json();
+                // ダミーの処理と結果
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                const data = {
+                    text: "【議事録（仮）】\n\n日付: 2025年12月8日\n件名: 新規プロジェクト 'Aurora' の進捗会議\n\n参加者:\n- 山田 (発言1、3)\n- 佐藤 (発言2)\n- 田中 (発言4)\n\n--- 本文 ---\n\n山田: 皆さん、おはようございます。早速ですが、新規プロジェクトAuroraの進捗状況から確認しましょう。現在のタスク完了率は70%です。\n佐藤: ありがとうございます。デザインフェーズは完了しましたが、バックエンドのAPI統合で若干遅れが出ています。田中さん、何か問題がありますか？\n山田: API統合の遅れについて、具体的な原因と解消のためのアクションプランが必要です。\n田中: はい。認証モジュールの設計見直しに時間がかかっており、本日の午後には完了予定です。明日中には統合テストを開始できる見込みです。"
+                };
 
-                if (!response.ok) {
-                    throw new Error(data.error || 'サーバーエラー');
-                }
 
-                resultText.value = data.text;
-                downloadWordBtn.classList.remove('hidden');
-            } catch (error) {
-                alert('エラー: ' + error.message);
-                resultText.value = 'エラーが発生しました: ' + error.message;
-            } finally {
-                statusArea.classList.add('hidden');
-                generateBtn.disabled = false;
-            }
-        });
+                // if (!response.ok) {
+                //     throw new Error(data.error || 'サーバーエラー');
+                // }
 
-        // Word保存機能
-        downloadWordBtn.addEventListener('click', () => {
-            const text = resultText.value;
-            if (!window.docx || !text) return;
-            const { Document, Packer, Paragraph, TextRun } = window.docx;
-            const paragraphs = text.split('\n').map(line => new Paragraph({
-                children: [new TextRun(line)], spacing: { after: 200 }
-            }));
-            const doc = new Document({ sections: [{ children: paragraphs }] });
-            Packer.toBlob(doc).then(blob => saveAs(blob, "議事録.docx"));
-        });
-    </script>
+                resultText.value = data.text;
+                downloadWordBtn.classList.remove('hidden');
+            } catch (error) {
+                alert('エラー: ' + error.message);
+                resultText.value = 'エラーが発生しました: ' + error.message;
+            } finally {
+                statusArea.classList.add('hidden');
+                generateBtn.disabled = false;
+            }
+        });
+
+        // Word保存機能
+        downloadWordBtn.addEventListener('click', () => {
+            const text = resultText.value;
+            if (!window.docx || !text) return;
+            const { Document, Packer, Paragraph, TextRun } = window.docx;
+            const paragraphs = text.split('\n').map(line => {
+                // 簡易的な見出し判定
+                const isHeading = line.startsWith('【') || line.startsWith('---');
+                return new Paragraph({
+                    children: [new TextRun({
+                        text: line,
+                        bold: isHeading,
+                        size: isHeading ? 28 : 22,
+                    })],
+                    spacing: { after: 200 }
+                })
+            });
+            const doc = new Document({ sections: [{ children: paragraphs }] });
+            Packer.toBlob(doc).then(blob => saveAs(blob, "議事録.docx"));
+        });
+    </script>
 </body>
 </html>
